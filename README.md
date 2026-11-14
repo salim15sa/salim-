@@ -24,3 +24,31 @@ New versions install over the old one and keep your data.
 
 ## Build locally
 Needs Android SDK + JDK 17: `./gradlew assembleRelease`
+
+---
+
+# My Wallet – personal income, expense & budget manager (Android)
+
+Second app in this repo (`expense/` module), installed as **MyWallet.apk** from the same
+**Releases → latest** page. Amounts default to OMR (change currency in Settings).
+
+## Features
+- **Home** – balance for the month, income vs expense, % saved, today's spend vs today's limit,
+  budget alerts, colourful category donut, recent entries. Switch month with the arrows at the top.
+- **Add income / expense** – big amount field, colourful category grid (Food, Grocery, Travel, Fuel,
+  Home & Rent, Bills, Mobile & Net, Tools, Hospital, Shopping, Family, Education, Entertainment…;
+  Salary, Bonus, Overtime, Side business, Refund…), date, paid with (Cash/Card/Bank/Wallet), note.
+  While typing it shows what will be left in that category's budget.
+- **Budgets** – a monthly limit per category and/or for the whole month. For each one you see
+  used / left, days left, **how much you can spend per day** for the rest of the month, and whether
+  you are ahead of or under plan.
+  - After saving an expense a message pops up, e.g. *Food: 30 OMR left for this month –
+    16 days left → about 1.875 OMR per day*.
+  - Phone notification when a budget reaches 80 % and when it is exceeded.
+- **Transactions** – grouped by day, search, filter by expense/income and category, tap to edit,
+  delete with undo.
+- **Reports** – month or whole year: income, expense, savings, avg per day, 6-month trend chart,
+  daily spending chart with daily-budget line, category breakdown with budgets, income sources,
+  payment methods. Download as **PDF** or **Excel** (open, share or save).
+- **Settings** – your own app name, currency & decimals, add/edit/delete categories (emoji + colour),
+  payment methods, alert switches, JSON backup / restore.

@@ -24,21 +24,24 @@ jobs:
         run: |
           chmod +x gradlew
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon :app:assembleRelease :expense:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk TaxiLog.apk
+          cp expense/build/outputs/apk/release/expense-release.apk MyWallet.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TaxiLog-apk
-          path: TaxiLog.apk
+          name: apks
+          path: |
+            TaxiLog.apk
+            MyWallet.apk
 
       - name: Publish as "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest TaxiLog.apk \
-            --title "Taxi Log (build ${{ github.run_number }})" \
-            --notes "Download TaxiLog.apk on your phone and install it. Built from ${{ github.ref_name }} @ ${GITHUB_SHA::7}." \
+          gh release create latest TaxiLog.apk MyWallet.apk \
+            --title "Apps (build ${{ github.run_number }})" \
+            --notes "TaxiLog.apk = taxi trip log. MyWallet.apk = personal income, expense & budget manager. Download on your phone and install. Built from ${{ github.ref_name }} @ ${GITHUB_SHA::7}." \
             --target "${{ github.sha }}" --prerelease
