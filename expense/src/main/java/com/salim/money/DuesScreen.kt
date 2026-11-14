@@ -92,9 +92,9 @@ fun DuesScreen(
     scope: CoroutineScope,
     openTxn: (Txn) -> Unit,
     openLoan: (LoanEdit) -> Unit,
+    openPerson: (String) -> Unit,
 ) {
     var page by rememberSaveable { mutableStateOf(0) }
-    var openPerson by rememberSaveable { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         // segmented switch
@@ -124,13 +124,7 @@ fun DuesScreen(
             }
         }
         if (page == 0) ClaimsPage(state, snackbar, scope, openTxn)
-        else PeoplePage(state, openLoan) { openPerson = it }
-    }
-
-    openPerson?.let { name ->
-        val p = state.person(name)
-        if (p == null) LaunchedEffect(name) { openPerson = null }
-        else PersonDetail(state, p, snackbar, scope, openLoan, onRenamed = { openPerson = it }) { openPerson = null }
+        else PeoplePage(state, openLoan, openPerson)
     }
 }
 
@@ -478,7 +472,7 @@ private fun BalanceLabel(state: AppState, balance: Double) {
 // ---------------------------------------------------------------- person detail
 
 @Composable
-private fun PersonDetail(
+fun PersonDetail(
     state: AppState,
     p: PersonBalance,
     snackbar: SnackbarHostState,
@@ -493,10 +487,7 @@ private fun PersonDetail(
     var confirmSettle by remember { mutableStateOf(false) }
     val b = p.balance
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
+    FullScreen(onClose) {
         Column(Modifier.fillMaxSize().background(Paper)) {
             Column(
                 Modifier
@@ -739,10 +730,7 @@ fun LoanEditor(state: AppState, edit: LoanEdit, snackbar: SnackbarHostState, sco
         onClose()
     }
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
+    FullScreen(onClose) {
         Column(Modifier.fillMaxSize().background(Paper).imePadding()) {
             Column(
                 Modifier
@@ -757,6 +745,9 @@ fun LoanEditor(state: AppState, edit: LoanEdit, snackbar: SnackbarHostState, sco
                         if (initial == null) "Loan / money with a person" else "Edit entry",
                         color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f),
                     )
+                    TextButton(onClick = { save() }) {
+                        Text("SAVE", color = Color.White, fontWeight = FontWeight.ExtraBold)
+                    }
                     if (initial != null) {
                         IconButton(onClick = {
                             state.deleteLoan(initial)

@@ -279,10 +279,7 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
         }
     }
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
+    FullScreen(onClose) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -307,6 +304,9 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
                     )
                     if (initial != null) {
                         IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "Delete", tint = Color.White) }
+                    }
+                    TextButton(onClick = { save(again = false) }) {
+                        Text("SAVE", color = Color.White, fontWeight = FontWeight.ExtraBold)
                     }
                 }
                 // expense / income switch

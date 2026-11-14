@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -364,6 +366,26 @@ fun EmptyHint(emoji: String, title: String, text: String) {
         Text(title, fontWeight = FontWeight.Bold, color = Ink, fontSize = 16.sp)
         Text(text, color = Muted, textAlign = TextAlign.Center, fontSize = 13.sp)
     }
+}
+
+/**
+ * A full-screen page drawn inside the app window (instead of a separate dialog
+ * window), so the status bar, navigation bar and keyboard insets are always right.
+ */
+@Composable
+fun FullScreen(onClose: () -> Unit, content: @Composable () -> Unit) {
+    androidx.activity.compose.BackHandler(onBack = onClose)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Paper)
+            // swallow taps so nothing underneath reacts
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+    ) { content() }
 }
 
 @Composable

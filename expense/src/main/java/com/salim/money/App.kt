@@ -88,6 +88,7 @@ fun App(state: AppState) {
     var editor by remember { mutableStateOf<Editor?>(null) }
     var loanEdit by remember { mutableStateOf<LoanEdit?>(null) }
     var quickAdd by remember { mutableStateOf(false) }
+    var openPerson by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val current = Tab.entries[tab]
@@ -107,6 +108,8 @@ fun App(state: AppState) {
     val addTxn: (Kind, Boolean) -> Unit = { k, r -> editor = Editor.New(k, r) }
     val openLoan: (LoanEdit) -> Unit = { loanEdit = it }
 
+    // Root box: full-screen editors are drawn on top of the Scaffold, inside the app window.
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = Paper,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -158,7 +161,7 @@ fun App(state: AppState) {
             when (current) {
                 Tab.Home -> HomeScreen(state, openTxn, addTxn, openLoan, goTo = { tab = it.ordinal })
                 Tab.Txns -> TransactionsScreen(state, openTxn)
-                Tab.Dues -> DuesScreen(state, snackbar, scope, openTxn, openLoan)
+                Tab.Dues -> DuesScreen(state, snackbar, scope, openTxn, openLoan) { openPerson = it }
                 Tab.Budget -> BudgetScreen(state)
                 Tab.Reports -> ReportsScreen(state)
                 Tab.Settings -> SettingsScreen(state, snackbar)
@@ -182,12 +185,19 @@ fun App(state: AppState) {
         )
     }
 
+    openPerson?.let { name ->
+        val p = state.person(name)
+        if (p == null) LaunchedEffect(name) { openPerson = null }
+        else PersonDetail(state, p, snackbar, scope, openLoan, onRenamed = { openPerson = it }) { openPerson = null }
+    }
+
     editor?.let { e ->
         TxnEditor(state, e, snackbar, scope, onClose = { editor = null })
     }
 
     loanEdit?.let { l ->
         LoanEditor(state, l, snackbar, scope, onClose = { loanEdit = null })
+    }
     }
 
     state.notice?.let { n -> BudgetNoticeDialog(state, n) { state.notice = null } }
