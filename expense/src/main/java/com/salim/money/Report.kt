@@ -15,8 +15,18 @@ class ReportData(
     val cat: (String) -> Category,
     /** Monthly budgets scaled to the period length (months), keyed by category id / TOTAL. */
     val budgets: Map<String, Double>,
+    /** Open loan balances right now (name, balance; > 0 they owe me). */
+    val people: List<Pair<String, Double>> = emptyList(),
 ) {
-    val expenses = txns.filter { it.kind == Kind.EXPENSE }
+    /** My own expenses (company claims excluded). */
+    val expenses = txns.filter { it.isPersonalExpense }
+    /** Spent for the company in this period. */
+    val claims = txns.filter { it.isClaim }
+    val claimTotal = claims.sumOf { it.amount }
+    val claimReceived = claims.filter { it.reimbursedOn != null }.sumOf { it.amount }
+    val claimPending = claimTotal - claimReceived
+    val owedToMe = people.filter { it.second > 0 }.sumOf { it.second }
+    val iOwe = people.filter { it.second < 0 }.sumOf { -it.second }
     val incomes = txns.filter { it.kind == Kind.INCOME }
     val income = incomes.sumOf { it.amount }
     val expense = expenses.sumOf { it.amount }
@@ -55,7 +65,7 @@ class ReportData(
             val out = mutableListOf<Triple<YearMonth, Double, Double>>()
             while (!m.isAfter(YearMonth.from(end))) {
                 val l = txns.filter { YearMonth.from(it.date) == m }
-                out += Triple(m, l.filter { it.kind == Kind.INCOME }.sumOf { it.amount }, l.filter { it.kind == Kind.EXPENSE }.sumOf { it.amount })
+                out += Triple(m, l.filter { it.kind == Kind.INCOME }.sumOf { it.amount }, l.filter { it.isPersonalExpense }.sumOf { it.amount })
                 m = m.plusMonths(1)
             }
             return out
@@ -80,6 +90,7 @@ class ReportData(
                     .sortedWith(compareBy<Txn> { it.date }.thenBy { it.id }),
                 cat = { state.category(it) },
                 budgets = state.store.budgets.mapValues { it.value * months },
+                people = state.people().filter { kotlin.math.abs(it.balance) > 0.0005 }.map { it.name to it.balance },
             )
         }
     }

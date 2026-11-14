@@ -69,14 +69,16 @@ object XlsxReport {
 
     private fun summary(d: ReportData): Sheet {
         val s = Sheet("Summary")
-        s.widths += listOf(2.0, 26.0, 18.0, 12.0, 10.0, 18.0)
+        s.widths += listOf(2.0, 30.0, 18.0, 14.0, 10.0, 18.0)
         s.merge(2, 2, 6, d.title, TITLE)
         s.merge(3, 2, 6, "Income & Expense Report • ${d.periodLabel} • amounts in ${d.currency}", SUB)
 
         var r = 5
         listOf(
-            "Total income" to d.income, "Total expense" to d.expense, "Savings" to d.net,
+            "Total income" to d.income, "My expenses" to d.expense, "Savings" to d.net,
             "Average spend per day" to d.avgPerDay,
+            "Company claims (period)" to d.claimTotal, "Claims still pending" to d.claimPending,
+            "People owe me (today)" to d.owedToMe, "I owe people (today)" to d.iOwe,
         ).forEach { (k, v) ->
             s.set(r, 2, k, LABEL)
             s.set(r, 3, v, BIG)
@@ -115,6 +117,35 @@ object XlsxReport {
             r++
         }
 
+        if (d.claims.isNotEmpty()) {
+            s.set(r, 2, "Company claim", HEAD); s.set(r, 3, "Amount", HEAD); s.set(r, 4, "Date", HEAD)
+            s.merge(r, 5, 6, "Status", HEAD)
+            r++
+            d.claims.forEach { t ->
+                val c = d.cat(t.categoryId)
+                s.set(r, 2, "${c.emoji} ${t.note.ifBlank { c.name }}", TEXT)
+                s.set(r, 3, t.amount, MONEY)
+                s.set(r, 4, t.date.format(SHORT_DATE), TEXT)
+                s.merge(r, 5, 6, t.reimbursedOn?.let { "Received ${it.format(SHORT_DATE)}" } ?: "Pending", TEXT)
+                r++
+            }
+            s.set(r, 2, "Total (pending ${"%,.${d.decimals}f".format(java.util.Locale.US, d.claimPending)})", TOTAL_L)
+            s.set(r, 3, d.claimTotal, TOTAL_M)
+            for (c in 4..6) s.set(r, c, null, TOTAL_L)
+            r += 2
+        }
+
+        if (d.people.isNotEmpty()) {
+            s.set(r, 2, "Person (loans)", HEAD); s.set(r, 3, "Amount", HEAD); s.merge(r, 4, 6, "Status", HEAD)
+            r++
+            d.people.forEach { (name, bal) ->
+                s.set(r, 2, name, TEXT); s.set(r, 3, kotlin.math.abs(bal), MONEY)
+                s.merge(r, 4, 6, if (bal > 0) "Owes me" else "I owe", TEXT)
+                r++
+            }
+            r++
+        }
+
         val months = d.months
         if (months.size > 1) {
             s.set(r, 2, "Month", HEAD); s.set(r, 3, "Income", HEAD); s.set(r, 4, "Expense", HEAD)
@@ -131,7 +162,7 @@ object XlsxReport {
 
     private fun entries(d: ReportData): Sheet {
         val s = Sheet("Entries")
-        s.widths += listOf(2.0, 13.0, 10.0, 22.0, 32.0, 12.0, 15.0)
+        s.widths += listOf(2.0, 13.0, 20.0, 22.0, 32.0, 12.0, 15.0)
         s.merge(2, 2, 7, "${d.title} – all entries", TITLE)
         s.merge(3, 2, 7, d.periodLabel, SUB)
         listOf("Date", "Type", "Category", "Note", "Paid with", "Amount").forEachIndexed { i, h -> s.set(5, i + 2, h, HEAD) }
@@ -141,14 +172,22 @@ object XlsxReport {
             val inc = t.kind == Kind.INCOME
             val c = d.cat(t.categoryId)
             s.set(r, 2, t.date.format(SHORT_DATE), TEXT)
-            s.set(r, 3, if (inc) "Income" else "Expense", TEXT)
+            s.set(
+                r, 3,
+                when {
+                    inc -> "Income"
+                    t.isClaim -> if (t.reimbursedOn != null) "Company (paid back)" else "Company (pending)"
+                    else -> "Expense"
+                },
+                TEXT,
+            )
             s.set(r, 4, "${c.emoji} ${c.name}", TEXT)
             s.set(r, 5, t.note, TEXT)
             s.set(r, 6, t.method, TEXT)
             s.set(r, 7, if (inc) t.amount else -t.amount, if (inc) INC else EXP)
             r++
         }
-        s.merge(r, 2, 6, "Net (income − expense)", TOTAL_L)
+        s.merge(r, 2, 6, "Savings (income − my expenses)", TOTAL_L)
         s.set(r, 7, d.net, TOTAL_M)
         return s
     }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +54,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -92,7 +94,8 @@ fun TransactionsScreen(state: AppState, open: (Txn) -> Unit) {
 
     val monthList = state.txnsIn(state.month)
     val filtered = monthList.filter { t ->
-        (kind == null || t.kind.name == kind) &&
+        (kind == null || (kind == "CLAIM" && t.isClaim) || (kind == Kind.EXPENSE.name && t.isPersonalExpense) ||
+            (kind == Kind.INCOME.name && t.kind == Kind.INCOME)) &&
             (catId == null || t.categoryId == catId) &&
             (query.isBlank() || run {
                 val c = state.category(t.categoryId)
@@ -100,7 +103,7 @@ fun TransactionsScreen(state: AppState, open: (Txn) -> Unit) {
             })
     }
     val usedCats = monthList.map { it.categoryId }.distinct().map { state.category(it) }
-        .filter { kind == null || it.kind.name == kind }
+        .filter { kind == null || it.kind.name == kind || (kind == "CLAIM" && it.kind == Kind.EXPENSE) }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -126,10 +129,11 @@ fun TransactionsScreen(state: AppState, open: (Txn) -> Unit) {
             )
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Pill("All", kind == null, Indigo) { kind = null; catId = null }
                 Pill("Expenses", kind == Kind.EXPENSE.name, ExpenseRed) { kind = Kind.EXPENSE.name; catId = null }
                 Pill("Income", kind == Kind.INCOME.name, IncomeGreen) { kind = Kind.INCOME.name; catId = null }
+                Pill("🏢 Company", kind == "CLAIM", Sky) { kind = "CLAIM"; catId = null }
             }
         }
         if (usedCats.size > 1) item {
@@ -141,7 +145,8 @@ fun TransactionsScreen(state: AppState, open: (Txn) -> Unit) {
         }
         item {
             val inc = filtered.filter { it.kind == Kind.INCOME }.sumOf { it.amount }
-            val exp = filtered.filter { it.kind == Kind.EXPENSE }.sumOf { it.amount }
+            val exp = filtered.filter { it.isPersonalExpense }.sumOf { it.amount }
+            val claim = filtered.filter { it.isClaim }.sumOf { it.amount }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -156,6 +161,7 @@ fun TransactionsScreen(state: AppState, open: (Txn) -> Unit) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text("+" + state.money(inc), color = IncomeGreen, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Text("-" + state.money(exp), color = ExpenseRed, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    if (claim > 0) Text("🏢 " + state.money(claim), color = Sky, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -164,7 +170,7 @@ fun TransactionsScreen(state: AppState, open: (Txn) -> Unit) {
         }
         filtered.groupBy { it.date }.forEach { (day, l) ->
             item(key = "d$day") {
-                val net = l.sumOf { if (it.kind == Kind.INCOME) it.amount else -it.amount }
+                val net = l.sumOf { if (it.kind == Kind.INCOME) it.amount else if (it.isClaim) 0.0 else -it.amount }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp, start = 4.dp, end = 4.dp)) {
                     Text(
                         if (day == LocalDate.now()) "Today" else if (day == LocalDate.now().minusDays(1)) "Yesterday" else day.format(DAY_HEAD),
@@ -224,12 +230,17 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
         )
     }
     var note by remember { mutableStateOf(initial?.note ?: "") }
+    var reimb by remember { mutableStateOf(initial?.reimbursable ?: (editor as? Editor.New)?.reimbursable ?: false) }
     var method by remember { mutableStateOf(initial?.method ?: state.settings.methods.firstOrNull() ?: "") }
     var pickDate by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val accent = if (kind == Kind.INCOME) IncomeGreen else ExpenseRed
+    val accent = when {
+        kind == Kind.INCOME -> IncomeGreen
+        reimb -> Sky
+        else -> ExpenseRed
+    }
     val cats = state.categoriesOf(kind)
     // Most used categories first.
     val counts = state.txns.groupingBy { it.categoryId }.eachCount()
@@ -253,6 +264,8 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
             date = date,
             note = note.trim(),
             method = method,
+            reimbursable = kind == Kind.EXPENSE && reimb,
+            reimbursedOn = if (kind == Kind.EXPENSE && reimb) initial?.reimbursedOn else null,
         )
         state.upsert(t)
         val c = state.category(t.categoryId)
@@ -287,7 +300,9 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onClose) { Icon(Icons.Filled.Close, "Close", tint = Color.White) }
                     Text(
-                        if (initial == null) "New ${if (kind == Kind.INCOME) "income" else "expense"}" else "Edit entry",
+                        if (initial != null) "Edit entry"
+                        else if (kind == Kind.INCOME) "New income"
+                        else if (reimb) "New company expense" else "New expense",
                         color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f),
                     )
                     if (initial != null) {
@@ -370,7 +385,13 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
                                     BorderStroke(if (sel) 2.dp else 1.dp, if (sel) c.col() else Line),
                                     RoundedCornerShape(16.dp),
                                 )
-                                .clickable { catId = c.id; error = null }
+                                .clickable {
+                                    catId = c.id; error = null
+                                    // Remember: if this category was last used for the company, suggest it again.
+                                    if (initial == null && kind == Kind.EXPENSE) {
+                                        state.txns.firstOrNull { it.categoryId == c.id }?.let { if (it.isClaim) reimb = true }
+                                    }
+                                }
                                 .padding(vertical = 10.dp, horizontal = 4.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
@@ -383,8 +404,37 @@ fun TxnEditor(state: AppState, editor: Editor, snackbar: SnackbarHostState, scop
                     }
                 }
 
+                if (kind == Kind.EXPENSE) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (reimb) Sky.copy(alpha = 0.10f) else Color.White)
+                            .border(BorderStroke(1.dp, if (reimb) Sky else Line), RoundedCornerShape(16.dp))
+                            .clickable { reimb = !reimb }
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("🏢", fontSize = 24.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Company will pay me back", fontWeight = FontWeight.Bold, color = Ink)
+                            Text(
+                                if (reimb) "Kept apart from my own expenses until the company pays"
+                                else "Turn on for taxi / work costs you claim from the company",
+                                fontSize = 12.sp, color = Muted,
+                            )
+                            val paidOn = initial?.reimbursedOn
+                            if (reimb && paidOn != null) {
+                                Text("✅ Paid back on ${paidOn.format(SHORT_DATE)}", fontSize = 12.sp, color = IncomeGreen)
+                            }
+                        }
+                        Switch(checked = reimb, onCheckedChange = { reimb = it })
+                    }
+                }
+
                 // live budget hint for the chosen category
-                catId?.takeIf { kind == Kind.EXPENSE }?.let { id ->
+                catId?.takeIf { kind == Kind.EXPENSE && !reimb }?.let { id ->
                     val m = java.time.YearMonth.from(date)
                     state.budgetStatus(id, m)?.let { s ->
                         val pending = parseAmount(amount) ?: 0.0

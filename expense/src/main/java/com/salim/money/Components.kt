@@ -81,6 +81,11 @@ object AppIcons {
         "pie",
         "M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z",
     )
+    val Swap = icon("swap", "M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z")
+    val People = icon(
+        "people",
+        "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z",
+    )
     val Wallet = icon(
         "wallet",
         "M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z",
@@ -89,7 +94,10 @@ object AppIcons {
 
 // ------------------------------------------------------------------ building blocks
 
-val HeaderBrush = Brush.linearGradient(listOf(Indigo, Violet))
+val HeaderBrush = Brush.horizontalGradient(listOf(Night, Color(0xFF1E1B4B), Color(0xFF312E81)))
+
+/** The bank-card style gradient used for the balance card. */
+val CardBrush = Brush.linearGradient(listOf(Color(0xFF4F46E5), Color(0xFF7C3AED), Color(0xFFC026D3)))
 
 @Composable
 fun WhiteCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
@@ -300,13 +308,48 @@ fun TxnRow(state: AppState, t: Txn, onClick: () -> Unit) {
             Text(c.name, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val sub = listOf(t.note, t.method).filter { it.isNotBlank() }.joinToString(" • ")
             if (sub.isNotEmpty()) Text(sub, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (t.isClaim) {
+                val paid = t.reimbursedOn != null
+                Text(
+                    if (paid) "🏢 Company paid back" else "🏢 Company to pay back",
+                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    color = if (paid) IncomeGreen else Sky,
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background((if (paid) IncomeGreen else Sky).copy(alpha = 0.12f))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         Text(
             (if (t.kind == Kind.INCOME) "+" else "-") + state.money(t.amount),
-            color = if (t.kind == Kind.INCOME) IncomeGreen else ExpenseRed,
+            color = when {
+                t.kind == Kind.INCOME -> IncomeGreen
+                t.isClaim -> Sky
+                else -> ExpenseRed
+            },
             fontWeight = FontWeight.Bold,
         )
+    }
+}
+
+/** Round avatar with the person's initials and a colour derived from the name. */
+@Composable
+fun PersonAvatar(name: String, size: Dp = 44.dp) {
+    val colors = listOf(Indigo, Teal, Sky, Violet, Color(0xFFDB2777), Color(0xFFEA580C), Color(0xFF65A30D), Color(0xFF0891B2))
+    val c = colors[(name.lowercase().hashCode() and 0x7fffffff) % colors.size]
+    val initials = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2)
+        .joinToString("") { it.first().uppercase() }.ifEmpty { "?" }
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(c, c.copy(alpha = 0.7f)))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(initials, color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.38f).sp)
     }
 }
 

@@ -74,7 +74,7 @@ fun ReportsScreen(state: AppState) {
         // summary tiles
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("Income", state.money(data.income), IncomeGreen, "⬇", Modifier.weight(1f))
-            Tile("Expense", state.money(data.expense), ExpenseRed, "⬆", Modifier.weight(1f))
+            Tile("My expenses", state.money(data.expense), ExpenseRed, "⬆", Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("Savings", state.money(data.net), if (data.net >= 0) Indigo else ExpenseRed, "🏦", Modifier.weight(1f))
@@ -86,6 +86,18 @@ fun ReportsScreen(state: AppState) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("Avg / day", state.money(data.avgPerDay), WarnAmber, "📊", Modifier.weight(1f))
             Tile("Entries", data.txns.size.toString(), Color(0xFF0EA5E9), "🧾", Modifier.weight(1f))
+        }
+
+        // money outside income/expense
+        if (data.claims.isNotEmpty() || data.people.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("Company claims", state.money(data.claimTotal), Sky, "🏢", Modifier.weight(1f))
+                Tile("Claims pending", state.money(data.claimPending), Color(0xFF0369A1), "⏳", Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("People owe me", state.money(data.owedToMe), Teal, "🤝", Modifier.weight(1f))
+                Tile("I owe", state.money(data.iOwe), WarnAmber, "🙏", Modifier.weight(1f))
+            }
         }
 
         // income vs expense trend
@@ -162,6 +174,27 @@ fun ReportsScreen(state: AppState) {
             WhiteCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     data.incomeRows.forEach { r -> CategoryLine(state, r, data.incomeRows.first().amount) }
+                }
+            }
+        }
+
+        // company claims list
+        if (data.claims.isNotEmpty()) {
+            SectionTitle("Company claims")
+            WhiteCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row {
+                        Text("Received ${state.money(data.claimReceived)}", color = IncomeGreen, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text("Pending ${state.money(data.claimPending)}", color = Sky, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                    BudgetBarPlain(if (data.claimTotal > 0) data.claimReceived / data.claimTotal else 0.0, IncomeGreen)
+                    data.claims.groupBy { it.categoryId }.map { (id, l) -> state.category(id) to l.sumOf { it.amount } }
+                        .sortedByDescending { it.second }.forEach { (c, v) ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${c.emoji} ${c.name}", color = Ink, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                Text(state.money(v), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            }
+                        }
                 }
             }
         }

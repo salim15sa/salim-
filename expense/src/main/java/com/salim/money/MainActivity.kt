@@ -44,11 +44,14 @@ class MainActivity : ComponentActivity() {
 
 // ------------------------------------------------------------------ colours
 
+val Night = Color(0xFF0F172A)
 val Indigo = Color(0xFF4F46E5)
+val Teal = Color(0xFF0D9488)
+val Sky = Color(0xFF0284C7)
 val Violet = Color(0xFF9333EA)
 val Ink = Color(0xFF111827)
 val Muted = Color(0xFF6B7280)
-val Paper = Color(0xFFF3F4FB)
+val Paper = Color(0xFFF5F6FA)
 val IncomeGreen = Color(0xFF10B981)
 val ExpenseRed = Color(0xFFF43F5E)
 val WarnAmber = Color(0xFFF59E0B)
@@ -113,7 +116,7 @@ class AppState(private val repo: StoreRepo, private val context: Context) {
 
     fun upsert(t: Txn) {
         commit(store.copy(txns = sortTxns(store.txns.filter { it.id != t.id } + t)))
-        if (t.kind == Kind.EXPENSE) checkBudgets(t)
+        if (t.isPersonalExpense) checkBudgets(t)
     }
 
     fun delete(t: Txn) = commit(store.copy(txns = store.txns.filter { it.id != t.id }))
@@ -123,19 +126,78 @@ class AppState(private val repo: StoreRepo, private val context: Context) {
     fun txnsIn(m: YearMonth) = store.txns.filter { YearMonth.from(it.date) == m }
 
     fun income(m: YearMonth) = txnsIn(m).filter { it.kind == Kind.INCOME }.sumOf { it.amount }
-    fun expense(m: YearMonth) = txnsIn(m).filter { it.kind == Kind.EXPENSE }.sumOf { it.amount }
 
-    /** Expense totals per category for a month, biggest first. */
+    /** My own spending (company-reimbursable expenses are kept apart). */
+    fun expense(m: YearMonth) = txnsIn(m).filter { it.isPersonalExpense }.sumOf { it.amount }
+
+    /** Spent for the company in this month (to be paid back). */
+    fun claimsIn(m: YearMonth) = txnsIn(m).filter { it.isClaim }
+
+    /** Totals per category for a month, biggest first. Expenses = personal only. */
     fun byCategory(m: YearMonth, kind: Kind = Kind.EXPENSE): List<Pair<Category, Double>> =
-        txnsIn(m).filter { it.kind == kind }.groupBy { it.categoryId }
+        txnsIn(m).filter { if (kind == Kind.EXPENSE) it.isPersonalExpense else it.kind == kind }
+            .groupBy { it.categoryId }
             .map { (id, l) -> category(id) to l.sumOf { it.amount } }
             .sortedByDescending { it.second }
+
+    // ---- company claims (reimbursable expenses)
+
+    val pendingClaims get() = store.txns.filter { it.claimPending }
+    val pendingClaimTotal get() = pendingClaims.sumOf { it.amount }
+
+    /** Mark claims as paid back on [on]; null puts them back to pending. */
+    fun markReimbursed(ids: Set<Long>, on: LocalDate?) = commit(
+        store.copy(txns = store.txns.map { if (it.id in ids && it.isClaim) it.copy(reimbursedOn = on) else it }),
+    )
+
+    fun markPending(t: Txn) = commit(
+        store.copy(txns = store.txns.map { if (it.id == t.id) it.copy(reimbursedOn = null) else it }),
+    )
+
+    // ---- loans / people
+
+    val loans get() = store.loans
+
+    fun upsertLoan(l: LoanEntry) = commit(store.copy(loans = sortLoans(store.loans.filter { it.id != l.id } + l)))
+
+    fun deleteLoan(l: LoanEntry) = commit(store.copy(loans = store.loans.filter { it.id != l.id }))
+
+    fun restoreLoan(l: LoanEntry) = commit(store.copy(loans = sortLoans(store.loans + l)))
+
+    fun nextLoanId(): Long = maxOf(System.currentTimeMillis(), (store.loans.maxOfOrNull { it.id } ?: 0L) + 1)
+
+    /** Everyone in the loan book; open balances first, biggest first. */
+    fun people(): List<PersonBalance> = store.loans.groupBy { it.person.trim().lowercase() }
+        .map { (_, l) ->
+            PersonBalance(
+                name = l.first().person.trim(),
+                gave = l.filter { it.gave }.sumOf { it.amount },
+                got = l.filter { !it.gave }.sumOf { it.amount },
+                entries = sortLoans(l),
+            )
+        }
+        .sortedWith(compareByDescending<PersonBalance> { kotlin.math.abs(it.balance) > 0.0005 }
+            .thenByDescending { kotlin.math.abs(it.balance) })
+
+    fun person(name: String) = people().firstOrNull { it.name.equals(name.trim(), true) }
+
+    val owedToMe get() = people().filter { it.balance > 0.0005 }.sumOf { it.balance }
+    val iOwe get() = people().filter { it.balance < -0.0005 }.sumOf { -it.balance }
+
+    fun renamePerson(old: String, new: String) {
+        val n = new.trim()
+        if (n.isEmpty()) return
+        commit(store.copy(loans = store.loans.map { if (it.person.equals(old, true)) it.copy(person = n) else it }))
+    }
+
+    fun deletePerson(name: String) =
+        commit(store.copy(loans = store.loans.filterNot { it.person.equals(name, true) }))
 
     // ---- budgets
 
     fun budgetStatus(key: String, m: YearMonth = month): BudgetStatus? {
         val b = store.budgets[key] ?: return null
-        val list = txnsIn(m).filter { it.kind == Kind.EXPENSE }
+        val list = txnsIn(m).filter { it.isPersonalExpense }
         val spent = if (key == TOTAL) list.sumOf { it.amount }
         else list.filter { it.categoryId == key }.sumOf { it.amount }
         return BudgetStatus(key, b, spent, m, LocalDate.now())
@@ -205,6 +267,17 @@ class AppState(private val repo: StoreRepo, private val context: Context) {
     fun replaceAll(s: Store) = commit(s)
 
     fun resetAll() = commit(Store(Defaults.categories, emptyList(), emptyMap(), store.settings))
+
+    fun shortDays(d: LocalDate): String {
+        val n = java.time.temporal.ChronoUnit.DAYS.between(d, LocalDate.now())
+        return when {
+            n == 0L -> "today"
+            n == 1L -> "yesterday"
+            n > 1 -> "$n days ago"
+            n == -1L -> "tomorrow"
+            else -> "in ${-n} days"
+        }
+    }
 
     // ---- formatting
 

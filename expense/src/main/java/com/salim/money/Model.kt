@@ -27,6 +27,30 @@ data class Txn(
     val date: LocalDate,
     val note: String,
     val method: String,
+    /** Paid by me for the company; the company pays it back later. */
+    val reimbursable: Boolean = false,
+    /** Date the company paid this back; null while still pending. */
+    val reimbursedOn: LocalDate? = null,
+) {
+    val isPersonalExpense get() = kind == Kind.EXPENSE && !reimbursable
+    val isClaim get() = kind == Kind.EXPENSE && reimbursable
+    val claimPending get() = isClaim && reimbursedOn == null
+}
+
+/**
+ * One money movement with a person (loan ledger).
+ * gave = true: I gave money (lent, or paid back what I owed).
+ * gave = false: I got money (borrowed, or they paid me back).
+ * Balance per person = gave - got; > 0 they owe me, < 0 I owe them.
+ */
+data class LoanEntry(
+    val id: Long,
+    val person: String,
+    val gave: Boolean,
+    val amount: Double,
+    val date: LocalDate,
+    val note: String,
+    val due: LocalDate? = null,
 )
 
 data class Settings(
@@ -47,6 +71,7 @@ data class Store(
     val settings: Settings,
     /** "yyyy-MM|catId|level" alerts already notified, so each one fires only once. */
     val alerted: Set<String> = emptySet(),
+    val loans: List<LoanEntry> = emptyList(),
 )
 
 const val TOTAL = "__total__"
@@ -115,6 +140,8 @@ object StoreJson {
                 put("id", t.id); put("kind", t.kind.name); put("amount", t.amount)
                 put("cat", t.categoryId); put("date", t.date.format(ISO))
                 put("note", t.note); put("method", t.method)
+                if (t.reimbursable) put("reimb", true)
+                t.reimbursedOn?.let { put("reimbOn", it.format(ISO)) }
             })
         }
         val budgets = JSONObject()
@@ -125,8 +152,17 @@ object StoreJson {
             put("budgetPopup", st.budgetPopup); put("notifications", st.notifications)
             put("methods", JSONArray(st.methods))
         }
+        val loans = JSONArray()
+        s.loans.forEach { l ->
+            loans.put(JSONObject().apply {
+                put("id", l.id); put("person", l.person); put("gave", l.gave); put("amount", l.amount)
+                put("date", l.date.format(ISO)); put("note", l.note)
+                l.due?.let { put("due", it.format(ISO)) }
+            })
+        }
         return JSONObject()
-            .put("app", "MyWallet").put("version", 1)
+            .put("app", "MyWallet").put("version", 2)
+            .put("loans", loans)
             .put("categories", cats).put("transactions", txns)
             .put("budgets", budgets).put("settings", settings)
             .put("alerted", JSONArray(s.alerted.toList()))
@@ -157,6 +193,21 @@ object StoreJson {
                 date = LocalDate.parse(t.getString("date")),
                 note = t.optString("note"),
                 method = t.optString("method"),
+                reimbursable = t.optBoolean("reimb", false),
+                reimbursedOn = t.optString("reimbOn").takeIf { it.isNotBlank() }?.let { LocalDate.parse(it) },
+            )
+        }
+        val la = o.optJSONArray("loans") ?: JSONArray()
+        val loans = (0 until la.length()).map { i ->
+            val l = la.getJSONObject(i)
+            LoanEntry(
+                id = l.getLong("id"),
+                person = l.optString("person"),
+                gave = l.optBoolean("gave", true),
+                amount = l.getDouble("amount"),
+                date = LocalDate.parse(l.getString("date")),
+                note = l.optString("note"),
+                due = l.optString("due").takeIf { it.isNotBlank() }?.let { LocalDate.parse(it) },
             )
         }
         val bo = o.optJSONObject("budgets") ?: JSONObject()
@@ -174,8 +225,18 @@ object StoreJson {
         )
         val al = o.optJSONArray("alerted") ?: JSONArray()
         val alerted = (0 until al.length()).map { al.getString(it) }.toSet()
-        return Store(cats, sortTxns(txns), budgets, settings, alerted)
+        return Store(cats, sortTxns(txns), budgets, settings, alerted, sortLoans(loans))
     }
+}
+
+fun sortLoans(list: List<LoanEntry>): List<LoanEntry> =
+    list.sortedWith(compareByDescending<LoanEntry> { it.date }.thenByDescending { it.id })
+
+/** Summary of everything with one person. */
+data class PersonBalance(val name: String, val gave: Double, val got: Double, val entries: List<LoanEntry>) {
+    val balance get() = gave - got
+    val nextDue: LocalDate? get() = if (balance > 0.0005) entries.mapNotNull { it.due }.minOrNull() else null
+    val last: LocalDate? get() = entries.maxOfOrNull { it.date }
 }
 
 fun sortTxns(list: List<Txn>): List<Txn> =

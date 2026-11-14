@@ -28,6 +28,10 @@ object PdfReport {
     private val ZEBRA = Color.rgb(0xF6, 0xF7, 0xFC)
     private val TRACK = Color.rgb(0xED, 0xEF, 0xF5)
     private val LINE = Color.rgb(0xE5, 0xE7, 0xEB)
+    private val SKY = Color.rgb(0x02, 0x84, 0xC7)
+    private val TEAL = Color.rgb(0x0D, 0x94, 0x88)
+    private val AMBER = Color.rgb(0xD9, 0x77, 0x06)
+    private val NIGHT = Color.rgb(0x0F, 0x17, 0x2A)
 
     private val DATE = DateTimeFormatter.ofPattern("dd MMM", Locale.US)
 
@@ -70,7 +74,7 @@ object PdfReport {
             c = page.canvas
             if (first) {
                 val band = Paint().apply {
-                    shader = LinearGradient(0f, 0f, W.toFloat(), 0f, INDIGO, VIOLET, Shader.TileMode.CLAMP)
+                    shader = LinearGradient(0f, 0f, W.toFloat(), 0f, NIGHT, INDIGO, Shader.TileMode.CLAMP)
                 }
                 c.drawRect(0f, 0f, W.toFloat(), 96f, band)
                 c.drawText(d.title, M, 44f, paint(22f, Color.WHITE, true))
@@ -100,7 +104,7 @@ object PdfReport {
         // ---- summary cards
         val cards = listOf(
             Triple("INCOME", d.money(d.income), GREEN),
-            Triple("EXPENSE", d.money(d.expense), RED),
+            Triple("MY EXPENSES", d.money(d.expense), RED),
             Triple("SAVINGS", d.money(d.net), if (d.net >= 0) INDIGO else RED),
             Triple("SAVED", if (d.income > 0) "${(d.savingsRate * 100).toInt()}%" else "–", VIOLET),
         )
@@ -119,6 +123,25 @@ object PdfReport {
             M, y, paint(9f, MUTED),
         )
         y += 10f
+
+        // ---- outside income/expense
+        if (d.claimTotal > 0 || d.people.isNotEmpty()) {
+            val extra = listOf(
+                Triple("COMPANY CLAIMS", d.money(d.claimTotal), SKY),
+                Triple("CLAIMS PENDING", d.money(d.claimPending), SKY),
+                Triple("PEOPLE OWE ME", d.money(d.owedToMe), TEAL),
+                Triple("I OWE", d.money(d.iOwe), AMBER),
+            )
+            y += 10f
+            extra.forEachIndexed { i, (label, value, col) ->
+                val x = M + i * (cw + 10f)
+                c.drawRoundRect(RectF(x, y, x + cw, y + 48f), 10f, 10f, fill(ZEBRA))
+                c.drawRoundRect(RectF(x, y, x + 4f, y + 48f), 2f, 2f, fill(col))
+                c.drawText(label, x + 12f, y + 18f, paint(7.5f, MUTED, true))
+                c.drawText(fit(value, paint(11.5f, col, true), cw - 16f), x + 12f, y + 36f, paint(11.5f, col, true))
+            }
+            y += 54f
+        }
 
         // ---- category tables
         fun categoryTable(rows: List<ReportData.Row>, total: Double, color: Int) {
@@ -191,6 +214,70 @@ object PdfReport {
             y += 8f
         }
 
+        // ---- company claims
+        if (d.claims.isNotEmpty()) {
+            section("Company claims (paid by me, to be reimbursed)")
+            val p = paint(9f, INK)
+            val pm = paint(8.5f, MUTED)
+            fun head() {
+                c.drawRect(M, y, W - M, y + 20f, fill(SKY))
+                val hp = paint(8.5f, Color.WHITE, true)
+                c.drawText("DATE", M + 8f, y + 13.5f, hp)
+                c.drawText("CATEGORY", M + 62f, y + 13.5f, hp)
+                c.drawText("NOTE", M + 170f, y + 13.5f, hp)
+                c.drawText("STATUS", M + 360f, y + 13.5f, hp)
+                c.right("AMOUNT", W - M - 8f, y + 13.5f, hp)
+                y += 20f
+            }
+            ensure(40f)
+            head()
+            d.claims.forEachIndexed { i, t ->
+                if (y + 18f > H - 44f) { newPage(false); head() }
+                if (i % 2 == 1) c.drawRect(M, y, W - M, y + 18f, fill(ZEBRA))
+                val cat = d.cat(t.categoryId)
+                c.drawText(t.date.format(DATE), M + 8f, y + 12.5f, pm)
+                c.drawText(fit(cat.name, p, 100f), M + 62f, y + 12.5f, p)
+                c.drawText(fit(t.note, pm, 180f), M + 170f, y + 12.5f, pm)
+                val paid = t.reimbursedOn
+                c.drawText(
+                    if (paid != null) "Received ${paid.format(DATE)}" else "Pending",
+                    M + 360f, y + 12.5f, paint(8.5f, if (paid != null) GREEN else SKY, true),
+                )
+                c.right(d.money(t.amount), W - M - 8f, y + 12.5f, paint(9f, INK, true))
+                y += 18f
+            }
+            ensure(22f)
+            c.drawLine(M, y, W - M, y, Paint().apply { color = SKY; strokeWidth = 1.2f })
+            c.drawText("Received ${d.money(d.claimReceived)}   •   Pending ${d.money(d.claimPending)}", M + 8f, y + 15f, paint(9.5f, INK, true))
+            c.right(d.money(d.claimTotal), W - M - 8f, y + 15f, paint(10f, SKY, true))
+            y += 26f
+        }
+
+        // ---- loans
+        if (d.people.isNotEmpty()) {
+            section("Loans – open balances today")
+            val p = paint(9.5f, INK)
+            ensure(20f)
+            c.drawRect(M, y, W - M, y + 20f, fill(TEAL))
+            val hp = paint(8.5f, Color.WHITE, true)
+            c.drawText("PERSON", M + 8f, y + 13.5f, hp)
+            c.drawText("STATUS", M + 220f, y + 13.5f, hp)
+            c.right("AMOUNT", W - M - 8f, y + 13.5f, hp)
+            y += 20f
+            d.people.forEachIndexed { i, (name, bal) ->
+                ensure(18f)
+                if (i % 2 == 1) c.drawRect(M, y, W - M, y + 18f, fill(ZEBRA))
+                c.drawText(fit(name, p, 200f), M + 8f, y + 12.5f, p)
+                c.drawText(if (bal > 0) "Owes me" else "I owe", M + 220f, y + 12.5f, paint(9f, if (bal > 0) TEAL else AMBER, true))
+                c.right(d.money(kotlin.math.abs(bal)), W - M - 8f, y + 12.5f, paint(9.5f, if (bal > 0) TEAL else AMBER, true))
+                y += 18f
+            }
+            ensure(22f)
+            c.drawLine(M, y, W - M, y, Paint().apply { color = TEAL; strokeWidth = 1.2f })
+            c.drawText("People owe me ${d.money(d.owedToMe)}   •   I owe ${d.money(d.iOwe)}", M + 8f, y + 15f, paint(9.5f, INK, true))
+            y += 26f
+        }
+
         // ---- all transactions
         if (d.txns.isNotEmpty()) {
             section("All entries")
@@ -216,9 +303,13 @@ object PdfReport {
                 c.drawCircle(M + 66f, y + 9f, 3f, fill(cat.color.toInt()))
                 c.drawText(fit(cat.name, p, 104f), M + 74f, y + 12.5f, p)
                 c.drawText(fit(t.note, pm, 190f), M + 180f, y + 12.5f, pm)
-                c.drawText(fit(t.method, pm, 70f), M + 380f, y + 12.5f, pm)
+                c.drawText(fit(t.method, pm, 48f), M + 380f, y + 12.5f, pm)
                 val inc = t.kind == Kind.INCOME
-                c.right((if (inc) "+" else "-") + d.money(t.amount), W - M - 8f, y + 12.5f, paint(9f, if (inc) GREEN else RED, true))
+                if (t.isClaim) c.drawText("Company", M + 430f, y + 12.5f, paint(7.5f, SKY, true))
+                c.right(
+                    (if (inc) "+" else "-") + d.money(t.amount), W - M - 8f, y + 12.5f,
+                    paint(9f, if (inc) GREEN else if (t.isClaim) SKY else RED, true),
+                )
                 y += 18f
             }
         } else {

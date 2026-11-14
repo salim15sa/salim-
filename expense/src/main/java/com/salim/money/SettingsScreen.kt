@@ -297,7 +297,7 @@ fun SettingsScreen(state: AppState, snackbar: SnackbarHostState) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Delete all entries?") },
-            text = { Text("All ${state.txns.size} income and expense entries and all budgets will be removed. This cannot be undone. Make a backup first if unsure.") },
+            text = { Text("All ${state.txns.size} income & expense entries, all loans and all budgets will be removed. This cannot be undone. Make a backup first if unsure.") },
             confirmButton = {
                 TextButton(onClick = { state.resetAll(); confirmReset = false }) { Text("Delete all", color = ExpenseRed) }
             },
