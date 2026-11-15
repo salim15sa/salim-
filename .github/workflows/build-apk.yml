@@ -24,21 +24,24 @@ jobs:
         run: |
           chmod +x gradlew
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon :app:assembleRelease :ats:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk TaxiLog.apk
+          cp ats/build/outputs/apk/release/ats-release.apk ATS.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TaxiLog-apk
-          path: TaxiLog.apk
+          name: apks
+          path: |
+            TaxiLog.apk
+            ATS.apk
 
       - name: Publish as "latest" release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest TaxiLog.apk \
-            --title "Taxi Log (build ${{ github.run_number }})" \
-            --notes "Download TaxiLog.apk on your phone and install it. Built from ${{ github.ref_name }} @ ${GITHUB_SHA::7}." \
+          gh release create latest TaxiLog.apk ATS.apk \
+            --title "Apps (build ${{ github.run_number }})" \
+            --notes "ATS.apk = ATS Projects (ELV checklist). TaxiLog.apk = Taxi Log. Download on your phone and install. Built from ${{ github.ref_name }} @ ${GITHUB_SHA::7}." \
             --target "${{ github.sha }}" --prerelease
