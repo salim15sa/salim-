@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "TaxiLog"
-include(":app")
+include(":app", ":ats")
