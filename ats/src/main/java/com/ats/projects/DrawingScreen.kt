@@ -255,12 +255,12 @@ fun DrawingScreen(state: AppState, p: Project) {
         }
     }
 
-    val list = found
+    val current = found.orEmpty()
     editIndex?.let { i ->
-        val f = list?.getOrNull(i)
+        val f = current.getOrNull(i)
         if (f == null) editIndex = null else {
             FoundEditDialog(p, f.d, newRooms, onDismiss = { editIndex = null }) { d ->
-                found = list.mapIndexed { k, x -> if (k == i) x.copy(d = d) else x }
+                found = current.mapIndexed { k, x -> if (k == i) x.copy(d = d) else x }
                 editIndex = null
             }
         }

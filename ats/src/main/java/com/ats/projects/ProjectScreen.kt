@@ -90,7 +90,7 @@ fun ProjectScreen(state: AppState, p: Project) {
 
     val sorted = p.sortedDevices()
     val shown = sorted.filter { (floorFilter == "All" || it.floor == floorFilter) && (systemFilter == "All" || it.system == systemFilter) }
-    val items = buildList {
+    val listItems = buildList<ListItem> {
         shown.groupBy { it.floor }.forEach { (floor, fl) ->
             add(ListItem.FloorHead(floor, fl.size, fl.sumOf { it.doneCount }.toDouble() / (fl.size * Stage.entries.size)))
             fl.groupBy { it.system }.forEach { (system, sl) ->
@@ -168,7 +168,7 @@ fun ProjectScreen(state: AppState, p: Project) {
                     )
                 }
             }
-            items(items, key = {
+            items(listItems, key = {
                 when (it) {
                     is ListItem.FloorHead -> "f-${it.floor}"
                     is ListItem.SystemHead -> "s-${it.floor}-${it.system}"
